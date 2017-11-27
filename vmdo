@@ -1,0 +1,323 @@
+#!/usr/bin/ruby
+
+##############
+# signal handling
+##############
+
+Signal.trap('INT') { command = ''; puts "\r"; u_quit }
+Signal.trap('TERM') { exit }
+
+##############
+# dependencies
+##############
+
+require 'mysql'
+require 'readline'
+
+##############
+# initialized data
+##############
+
+# authentication database credentials
+database_creds = {
+  host: '',
+  user: '',
+  pass: '',
+  name: ''
+}
+
+# define authorization levels
+levels = {
+  'issue' => 1,
+  'admin' => 2,
+  'production' => 3,
+  'research' => 4,
+  'player' => 5
+}
+
+# repl and api commands white-lists
+#   the _api arrays must be removed before deployment to production, they are just for testing / debugging during development, and are ultimately called by level_commands and down by higer-level _apis.
+commands = { 
+  universal: ['help','?','h','l','p','n','bye','quit','exit','q','env','alerts','!'],
+  global_api: [],
+  host_api: [],
+  storage_api: [],
+  guest_api: [
+    'conf',
+    'create',
+    'boot',
+    'halt',
+    'kill',
+    'reboot',
+    'nic_add',
+    'nic_del',
+    'disk_add',
+    'disk_del',
+    'disk_resize',
+    'mem_resize'
+  ]
+}
+
+# level commands white-lists
+level_filters = {
+  issue: [
+    'creds_generate',
+    'creds_revoke'
+  ], 
+  admin: [
+    'host_add',
+    'host_del'
+  ], 
+  production: [], 
+  research: [], 
+  player: []
+}
+
+##############
+# methods
+##############
+
+# authentication
+def authenticate(db,username,password)
+  query = "SELECT users.id AS uid, users.username AS user, roles.name AS role FROM roles INNER JOIN users ON (users.roles_id = roles.id) WHERE (users.username = '#{username}') AND (users.password_hash = PASSWORD('#{password}')) LIMIT 1"
+  connection = Mysql.new(db[:host],db[:user],db[:pass],db[:name])
+  result = connection.query(query)
+  connection.close
+  return false if result.num_rows == 0
+  keys = [:uid,:user,:authorization]
+  result.each do |row|
+    return keys.zip(row).to_h
+  end
+end
+
+def login_prompt
+  print "[>][username] > "
+  user_name = gets.chomp
+  print "[>][passphrase] > "
+  pass_word = gets.chomp
+  return :user_name => user_name, :pass_word => pass_word
+end
+
+def login(database_creds)
+  counter = 0
+  while counter < 3
+    login_data = login_prompt
+    auth_data = authenticate(database_creds,login_data[:user_name],login_data[:pass_word])
+    if auth_data
+      puts "[+][authentication success]"
+      $env = {user: auth_data[:user], authorization: auth_data[:authorization], context: '/'}
+      break
+    else
+      puts "[-][authentication failure]"
+      counter += 1
+    end
+  end
+  exit if counter >= 3
+end
+
+# authorization
+def authorize(levels,level_filters,commands)
+  l = levels[$env[:authorization]]
+  levels.select do |k, v|
+    current = level_filters[k.to_sym].clone
+    commands[k.to_sym] = current if v >= l
+  end
+end
+
+# repl
+def repl_prompt(commands)
+  prompt = "vmdo> "
+  completion = proc { |c| commands.values.flatten.grep(/^#{Regexp.escape(c)}/) }
+  Readline.completion_append_character = " "
+  Readline.completion_proc = completion
+  command = Readline.readline(prompt, true)
+  command.strip!
+  begin
+    case command
+      when /^\s*$/ then Readline::HISTORY.pop
+      when Readline::HISTORY[-2] then Readline::HISTORY.pop
+    end
+  rescue IndexError
+  end
+  return command.strip
+  # todo: sanitize inputs here, black-listing or whitelisting characters to strip.
+  # todo: ^C should stop a current task, or if no task is running, either exit or newline.
+end
+
+def repl(commands)
+  puts "Welcome to vmdo."
+  # todo: puts motd, pulled from the database.
+  loop do
+    command = ''
+    while command.empty?
+      command = repl_prompt(commands)
+      command = command.to_s.strip
+    end
+
+    command_context = nil
+    commands.each do |k, v|
+      command_context = k if v.include? "#{command}"
+    end
+
+    if command_context.nil?
+      puts "[-][Not found: #{command}]"
+    else
+      case command_context
+        # repl command classes
+        when :universal then prefix = 'u_'
+        # level command classes
+        when :issue then prefix = 'i_'
+        when :admin then prefix = 'a_'
+        when :production then prefix = 'p_'
+        when :research then prefix = 'r_'
+        when :player then prefix = 'pl_'
+        # api command classes
+        #   N.B.: all _api cases below, should remain commented out, except during testing and/or debugging. this allows us to only expose top-level commands, per authorization level, which use the underlying apis.
+        when :global_api then prefix = 'gl_'
+        when :host_api then prefix = 'h_'
+        when :storage_api then prefix = 's_'
+        when :guest_api then prefix = 'g_'
+      end
+      self.send("#{prefix}#{command}".to_sym)
+    end
+  end
+end
+
+# issue
+def i_creds_revoke
+  puts "yodo"
+end
+
+def i_creds_generate
+  puts "yolo"
+end
+
+# admin
+def a_host_add
+  puts "host add"
+end
+
+def a_host_del
+  puts "host del"
+end
+
+# production
+
+
+# research
+
+
+# player
+
+
+# universal
+def u_help
+  puts "[+][vmdo help]"
+  puts "[.]"
+  puts "[.][]"
+  puts "[.][]"
+  puts "[.][]"
+  puts "[.][]"
+end
+alias :u_? :u_help
+
+def u_previous
+  puts "Stepping back."
+end
+alias :u_h :u_previous
+alias :u_p :u_previous
+
+def u_next
+  puts "Stepping forward."
+end
+alias :u_l :u_next
+alias :u_n :u_next
+
+def u_quit
+  puts "[+][quit]"
+  exit
+end
+alias :u_exit :u_quit
+alias :u_bye :u_quit
+alias :u_q :u_quit
+
+def u_env
+  puts "[+][environment]"
+  puts "[.]"
+  $env.each do |k,v|
+    puts "[.][#{k}: #{v}]"
+  end
+end
+
+def u_alerts
+  puts "[+][alerts]"
+  puts "[.]"
+  puts "[.][none]"
+end
+alias :u_! :u_alerts
+
+# global_api
+
+
+# host_api
+
+
+# storage_api
+
+
+# guest_api
+def g_conf
+  true
+end
+
+def g_create
+  true
+end
+
+def g_boot
+  true
+end
+
+def g_halt
+  true
+end
+
+def g_kill
+  true
+end
+
+def g_reboot
+  true
+end
+
+def g_nic_add
+  true
+end
+
+def g_nic_del
+  true
+end
+
+def g_disk_add
+  true
+end
+
+def g_disk_del
+  true
+end
+
+def g_disk_resize
+  true
+end
+
+def g_mem_resize
+  true
+end
+
+##############
+# flow control
+##############
+
+login(database_creds)
+authorize(levels,level_filters,commands)
+repl(commands)
