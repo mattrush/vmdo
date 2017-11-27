@@ -2,4 +2,4 @@
 Virtual machine deployment REPL.
 
 # Todo
-Parameterize authentication query. Injection vuln confirmed in username value during login.
+Parameterize authentication query. Single quote injection vuln confirmed in username parameter at login, enabling auth bypass. 
