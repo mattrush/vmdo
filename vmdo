@@ -1,11 +1,17 @@
 #!/usr/bin/ruby
 
+# vmdo
+# virtual machine infrastructure management, ruby 2.2.8
+# by mrush 11.2017
+# m@root.dance
+# github.com/mattrush
+
 ##############
 # signal handling
 ##############
 
 Signal.trap('INT') { command = ''; puts "\r"; u_quit }
-Signal.trap('TERM') { exit }
+#Signal.trap('TERM') { exit } # i wish
 
 ##############
 # dependencies
