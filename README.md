@@ -1,4 +1,4 @@
-# vmdo
+# vmlab2
 Virtual machine manipulation.
 
 # Road map
